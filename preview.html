@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Client Infrastructure Monitor — Preview</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+<script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body { background: #020617; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+const {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend, Area, AreaChart,
+} = Recharts;
+
+// lucide-react shim: produce React components from the lucide UMD icon definitions
+const makeIcon = (name) => (props = {}) => {
+  const node = lucide.icons[name];
+  if (!node) return null;
+  const { size = 24, color = "currentColor", strokeWidth = 2, className = "", style = {}, fill = "none" } = props;
+  const [, attrs, children] = node;
+  return React.createElement(
+    "svg",
+    {
+      xmlns: "http://www.w3.org/2000/svg",
+      width: size, height: size,
+      viewBox: attrs.viewBox || "0 0 24 24",
+      fill: fill,
+      stroke: color,
+      strokeWidth,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className: `lucide lucide-${name.toLowerCase()} ${className}`,
+      style,
+    },
+    children.map((c, i) => React.createElement(c[0], { key: i, ...c[1] }))
+  );
+};
+
+const Activity = makeIcon("Activity");
+const AlertTriangle = makeIcon("AlertTriangle");
+const Server = makeIcon("Server");
+const HardDrive = makeIcon("HardDrive");
+const Cpu = makeIcon("Cpu");
+const MemoryStick = makeIcon("MemoryStick");
+const TicketCheck = makeIcon("TicketCheck");
+const ShieldCheck = makeIcon("ShieldCheck");
+const DatabaseBackup = makeIcon("DatabaseBackup");
+const Network = makeIcon("Network");
+const Bell = makeIcon("Bell");
+const Settings = makeIcon("Settings");
+const LayoutDashboard = makeIcon("LayoutDashboard");
+const Users = makeIcon("Users");
+const FileText = makeIcon("FileText");
+const LifeBuoy = makeIcon("LifeBuoy");
+const CheckCircle2 = makeIcon("CheckCircle2");
+const XCircle = makeIcon("XCircle");
+const Loader2 = makeIcon("Loader2");
+const ArrowUpRight = makeIcon("ArrowUpRight");
+const ArrowDownRight = makeIcon("ArrowDownRight");
+const Circle = makeIcon("Circle");
+const Clock = makeIcon("Clock");
+const Wifi = makeIcon("Wifi");
+
+/* === Same MSP_CONFIG, helpers, generators, components, root as Dashboard.jsx === */
+const MSP_CONFIG = {
+  mspName: "[MSP_NAME]",
+  clientName: "[CLIENT_NAME]",
+  brandColour: "#6366f1",
+  logoPlaceholder: true,
+};
+
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const rand = (min, max) => Math.random() * (max - min) + min;
+const randInt = (min, max) => Math.floor(rand(min, max + 1));
+const thresholdColour = (v) => v >= 85 ? "#ef4444" : v >= 65 ? "#f59e0b" : "#10b981";
+const formatTime = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const formatDate = (d) => d.toLocaleDateString([], { month: "short", day: "numeric" });
+
+const SEVERITIES = ["Critical", "Warning", "Info"];
+const STATUSES = ["Open", "Acknowledged", "Resolved"];
+const SYSTEMS = ["SRV-DC01","SRV-FILE02","SRV-EXCH01","SRV-SQL03","FW-EDGE01","SW-CORE01","VM-APP04","NAS-BACKUP","WKS-FINANCE07","VM-WEB02"];
+const ALERT_MESSAGES = [
+  "High CPU sustained > 90%","Disk usage above threshold","Service stopped: SQL Agent",
+  "Failed login attempts (15)","Memory pressure detected","Patch pending reboot",
+  "Backup job overrun","Certificate expiring in 14 days","SMART warning on disk 2","Network latency spike",
+];
+
+const generateAlerts = (n = 6) => Array.from({ length: n }).map((_, i) => ({
+  id: `INC-${1000 + i}`,
+  severity: SEVERITIES[randInt(0, 2)],
+  system: SYSTEMS[randInt(0, SYSTEMS.length - 1)],
+  message: ALERT_MESSAGES[randInt(0, ALERT_MESSAGES.length - 1)],
+  raised: new Date(Date.now() - randInt(2, 600) * 60000),
+  status: STATUSES[randInt(0, 2)],
+}));
+
+const generateTicketTrend = () => {
+  const today = new Date();
+  return Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(today); d.setDate(today.getDate() - (6 - i));
+    return { day: d.toLocaleDateString([], { weekday: "short" }), raised: randInt(8, 35), resolved: randInt(6, 32) };
+  });
+};
+
+const generateTopDevices = () => Array.from({ length: 5 }).map(() => ({
+  name: SYSTEMS[randInt(0, SYSTEMS.length - 1)], cpu: randInt(55, 98),
+})).sort((a, b) => b.cpu - a.cpu);
+
+const generateBackups = () => {
+  const statuses = ["Success","Success","Success","Failed","Running"];
+  return Array.from({ length: 5 }).map((_, i) => ({
+    system: SYSTEMS[randInt(0, SYSTEMS.length - 1)],
+    timestamp: new Date(Date.now() - randInt(30, 1440) * 60000),
+    size: `${rand(12, 480).toFixed(1)} GB`,
+    status: statuses[i % statuses.length],
+  }));
+};
+
+const generateInitialThroughput = () => {
+  const now = Date.now();
+  return Array.from({ length: 10 }).map((_, i) => ({
+    t: new Date(now - (9 - i) * 5000), inbound: randInt(120, 480), outbound: randInt(60, 320),
+  }));
+};
+
+const Card = ({ title, icon: Icon, children, className = "", action }) => (
+  <div className={`rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur shadow-lg shadow-black/20 ${className}`}>
+    <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-800">
+      <div className="flex items-center gap-2">
+        {Icon && <Icon size={18} style={{ color: MSP_CONFIG.brandColour }} />}
+        <h3 className="text-sm font-semibold text-slate-100 tracking-wide">{title}</h3>
+      </div>
+      {action}
+    </div>
+    <div className="p-5">{children}</div>
+  </div>
+);
+
+const ProgressBar = ({ value, label, icon: Icon }) => {
+  const colour = thresholdColour(value);
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2 text-slate-300 text-sm">
+          {Icon && <Icon size={14} />}<span>{label}</span>
+        </div>
+        <span className="text-sm font-semibold" style={{ color: colour }}>{value.toFixed(0)}%</span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${value}%`, backgroundColor: colour }} />
+      </div>
+    </div>
+  );
+};
+
+const SeverityBadge = ({ severity }) => {
+  const map = {
+    Critical: "bg-red-500/15 text-red-400 border-red-500/30",
+    Warning: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    Info: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${map[severity]}`}>
+      <Circle size={6} fill="currentColor" />{severity}
+    </span>
+  );
+};
+
+const StatusPill = ({ status }) => {
+  const map = {
+    Open: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+    Acknowledged: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    Resolved: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    Success: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    Failed: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+    Running: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+  };
+  const Icon = (status === "Resolved" || status === "Success") ? CheckCircle2
+    : status === "Failed" ? XCircle
+    : status === "Running" ? Loader2 : Clock;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${map[status]}`}>
+      <Icon size={12} className={status === "Running" ? "animate-spin" : ""} />{status}
+    </span>
+  );
+};
+
+const Sidebar = () => {
+  const items = [
+    { label: "Dashboard", icon: LayoutDashboard, active: true },
+    { label: "Devices", icon: Server },
+    { label: "Tickets", icon: TicketCheck },
+    { label: "Alerts", icon: Bell },
+    { label: "Reports", icon: FileText },
+    { label: "Clients", icon: Users },
+    { label: "Support", icon: LifeBuoy },
+    { label: "Settings", icon: Settings },
+  ];
+  return (
+    <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-slate-950/80 border-r border-slate-800 p-4">
+      <div className="flex items-center gap-3 px-2 py-3 mb-4">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-sm" style={{ backgroundColor: MSP_CONFIG.brandColour }}>
+          {MSP_CONFIG.mspName.replace(/[^A-Za-z]/g, "").slice(0, 2) || "MS"}
+        </div>
+        <div className="leading-tight">
+          <div className="text-slate-100 font-semibold text-sm">{MSP_CONFIG.mspName}</div>
+          <div className="text-slate-500 text-xs">MSP Console</div>
+        </div>
+      </div>
+      <nav className="flex-1 space-y-1">
+        {items.map(({ label, icon: Icon, active }) => (
+          <a key={label} href="#"
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "text-white" : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/60"}`}
+            style={active ? { backgroundColor: `${MSP_CONFIG.brandColour}22`, border: `1px solid ${MSP_CONFIG.brandColour}55` } : {}}>
+            <Icon size={16} />{label}
+          </a>
+        ))}
+      </nav>
+      <div className="mt-4 p-3 rounded-lg border border-slate-800 bg-slate-900/60 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-slate-200 font-medium mb-1">
+          <ShieldCheck size={14} style={{ color: MSP_CONFIG.brandColour }} />Service Status
+        </div>
+        All systems operational
+      </div>
+    </aside>
+  );
+};
+
+const Header = ({ lastUpdated }) => (
+  <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 py-4 border-b border-slate-800 bg-slate-950/60 backdrop-blur sticky top-0 z-10">
+    <div className="flex items-center gap-4">
+      <div className="lg:hidden">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-sm" style={{ backgroundColor: MSP_CONFIG.brandColour }}>
+          {MSP_CONFIG.mspName.replace(/[^A-Za-z]/g, "").slice(0, 2) || "MS"}
+        </div>
+      </div>
+      <div>
+        <h1 className="text-lg md:text-xl font-semibold text-white tracking-tight">Client Infrastructure Monitor</h1>
+        <p className="text-slate-400 text-xs md:text-sm">
+          Monitoring <span className="font-medium" style={{ color: MSP_CONFIG.brandColour }}>{MSP_CONFIG.clientName}</span>
+          {" · Provided by "}<span className="text-slate-200">{MSP_CONFIG.mspName}</span>
+        </p>
+      </div>
+    </div>
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>Live
+      </div>
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300">
+        <Clock size={12} />Last updated: {formatTime(lastUpdated)}
+      </div>
+    </div>
+  </header>
+);
+
+const SystemHealth = ({ data }) => (
+  <Card title="System Health Overview" icon={Activity}>
+    <div className="grid grid-cols-2 gap-5">
+      <div className="col-span-2 flex items-center justify-between p-3 rounded-lg bg-slate-800/40 border border-slate-800">
+        <div>
+          <div className="text-slate-400 text-xs uppercase tracking-wider">Uptime (30d)</div>
+          <div className="text-2xl font-semibold text-white">{data.uptime.toFixed(3)}%</div>
+        </div>
+        <div className="px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: `${MSP_CONFIG.brandColour}22`, color: MSP_CONFIG.brandColour, border: `1px solid ${MSP_CONFIG.brandColour}55` }}>
+          Healthy
+        </div>
+      </div>
+      <div className="col-span-2 space-y-4">
+        <ProgressBar value={data.cpu} label="CPU Usage" icon={Cpu} />
+        <ProgressBar value={data.ram} label="Memory Usage" icon={MemoryStick} />
+        <ProgressBar value={data.disk} label="Disk Usage" icon={HardDrive} />
+      </div>
+    </div>
+  </Card>
+);
+
+const ActiveAlerts = ({ alerts }) => (
+  <Card title="Active Alerts" icon={AlertTriangle}
+    action={<span className="text-xs text-slate-400">{alerts.filter(a => a.status !== "Resolved").length} open</span>}>
+    <div className="overflow-x-auto -mx-2">
+      <table className="w-full text-sm">
+        <thead><tr className="text-left text-xs uppercase tracking-wider text-slate-500">
+          <th className="px-2 py-2 font-medium">Severity</th>
+          <th className="px-2 py-2 font-medium">System</th>
+          <th className="px-2 py-2 font-medium">Issue</th>
+          <th className="px-2 py-2 font-medium">Raised</th>
+          <th className="px-2 py-2 font-medium">Status</th>
+        </tr></thead>
+        <tbody className="divide-y divide-slate-800">
+          {alerts.map(a => (
+            <tr key={a.id} className="text-slate-300 hover:bg-slate-800/40">
+              <td className="px-2 py-2.5"><SeverityBadge severity={a.severity} /></td>
+              <td className="px-2 py-2.5 font-mono text-xs text-slate-200">{a.system}</td>
+              <td className="px-2 py-2.5 text-slate-300">{a.message}</td>
+              <td className="px-2 py-2.5 text-slate-400 text-xs">{formatTime(a.raised)}</td>
+              <td className="px-2 py-2.5"><StatusPill status={a.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </Card>
+);
+
+const TicketTrend = ({ data }) => (
+  <Card title="Ticket Volume — Last 7 Days" icon={TicketCheck}>
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} barGap={4}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="day" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+          <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+          <Tooltip cursor={{ fill: "#1e293b66" }}
+            contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0", fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
+          <Bar dataKey="raised" name="Raised" fill={MSP_CONFIG.brandColour} radius={[4,4,0,0]} />
+          <Bar dataKey="resolved" name="Resolved" fill="#10b981" radius={[4,4,0,0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  </Card>
+);
+
+const TopDevices = ({ devices }) => (
+  <Card title="Top 5 Devices by CPU Load" icon={Cpu}>
+    <div className="space-y-3">
+      {devices.map((d, i) => (
+        <div key={`${d.name}-${i}`} className="space-y-1.5">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2 text-slate-200">
+              <span className="w-5 h-5 inline-flex items-center justify-center rounded-md text-xs font-semibold text-slate-900" style={{ backgroundColor: MSP_CONFIG.brandColour }}>{i + 1}</span>
+              <span className="font-mono text-xs">{d.name}</span>
+            </div>
+            <span className="text-sm font-semibold" style={{ color: thresholdColour(d.cpu) }}>{d.cpu}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${d.cpu}%`, backgroundColor: thresholdColour(d.cpu) }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  </Card>
+);
+
+const SLACompliance = ({ current, previous }) => {
+  const delta = current - previous; const up = delta >= 0;
+  return (
+    <Card title="SLA Compliance — This Month" icon={ShieldCheck}>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">Tickets resolved within SLA</div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-5xl font-semibold text-white tracking-tight">{current.toFixed(1)}%</span>
+          </div>
+          <div className={`mt-2 inline-flex items-center gap-1 text-sm font-medium ${up ? "text-emerald-400" : "text-rose-400"}`}>
+            {up ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+            {up ? "+" : ""}{delta.toFixed(1)} pts vs last month ({previous.toFixed(1)}%)
+          </div>
+        </div>
+        <div className="w-24 h-24 rounded-full grid place-items-center text-white font-semibold"
+          style={{ background: `conic-gradient(${MSP_CONFIG.brandColour} ${current * 3.6}deg, #1e293b 0deg)` }}>
+          <div className="w-[80px] h-[80px] rounded-full bg-slate-900 grid place-items-center text-sm">
+            <span style={{ color: MSP_CONFIG.brandColour }}>SLA</span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+const BackupStatus = ({ jobs }) => (
+  <Card title="Last Backup Status" icon={DatabaseBackup}>
+    <div className="overflow-x-auto -mx-2">
+      <table className="w-full text-sm">
+        <thead><tr className="text-left text-xs uppercase tracking-wider text-slate-500">
+          <th className="px-2 py-2 font-medium">System</th>
+          <th className="px-2 py-2 font-medium">Timestamp</th>
+          <th className="px-2 py-2 font-medium">Size</th>
+          <th className="px-2 py-2 font-medium">Status</th>
+        </tr></thead>
+        <tbody className="divide-y divide-slate-800">
+          {jobs.map((j, i) => (
+            <tr key={i} className="text-slate-300 hover:bg-slate-800/40">
+              <td className="px-2 py-2.5 font-mono text-xs text-slate-200">{j.system}</td>
+              <td className="px-2 py-2.5 text-slate-400 text-xs">{formatDate(j.timestamp)} {formatTime(j.timestamp)}</td>
+              <td className="px-2 py-2.5 text-slate-300">{j.size}</td>
+              <td className="px-2 py-2.5"><StatusPill status={j.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </Card>
+);
+
+const NetworkThroughput = ({ data }) => {
+  const chartData = useMemo(() => data.map(d => ({ time: formatTime(d.t), inbound: d.inbound, outbound: d.outbound })), [data]);
+  const latest = data[data.length - 1] || { inbound: 0, outbound: 0 };
+  return (
+    <Card title="Network Throughput" icon={Network}
+      action={
+        <div className="flex items-center gap-3 text-xs">
+          <span className="flex items-center gap-1 text-slate-300">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MSP_CONFIG.brandColour }} />In {latest.inbound} Mbps
+          </span>
+          <span className="flex items-center gap-1 text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />Out {latest.outbound} Mbps
+          </span>
+        </div>
+      }>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="inGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={MSP_CONFIG.brandColour} stopOpacity={0.5} />
+                <stop offset="100%" stopColor={MSP_CONFIG.brandColour} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="outGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10b981" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} unit=" Mbps" />
+            <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0", fontSize: 12 }} />
+            <Area type="monotone" dataKey="inbound" stroke={MSP_CONFIG.brandColour} strokeWidth={2} fill="url(#inGrad)" name="Inbound" isAnimationActive={false} />
+            <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={2} fill="url(#outGrad)" name="Outbound" isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+};
+
+function Dashboard() {
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [health, setHealth] = useState({ uptime: 99.982, cpu: 42, ram: 61, disk: 73 });
+  const [alerts, setAlerts] = useState(generateAlerts(6));
+  const [ticketTrend, setTicketTrend] = useState(generateTicketTrend());
+  const [topDevices, setTopDevices] = useState(generateTopDevices());
+  const [sla, setSla] = useState({ current: 96.4, previous: 94.1 });
+  const [backups, setBackups] = useState(generateBackups());
+  const [throughput, setThroughput] = useState(generateInitialThroughput());
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setThroughput(prev => ([
+        ...prev.slice(1),
+        { t: new Date(),
+          inbound: clamp((prev[prev.length-1]?.inbound || 200) + randInt(-40, 40), 40, 700),
+          outbound: clamp((prev[prev.length-1]?.outbound || 150) + randInt(-30, 30), 20, 500) },
+      ]));
+      setLastUpdated(new Date());
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setHealth(h => ({
+        uptime: clamp(h.uptime + rand(-0.002, 0.001), 99.5, 100),
+        cpu: clamp(h.cpu + rand(-8, 8), 10, 97),
+        ram: clamp(h.ram + rand(-5, 5), 25, 95),
+        disk: clamp(h.disk + rand(-1, 1.2), 40, 95),
+      }));
+      setTopDevices(devs => devs.map(d => ({ ...d, cpu: clamp(d.cpu + randInt(-6, 6), 35, 99) })).sort((a,b) => b.cpu - a.cpu));
+    }, 7000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setAlerts(curr => {
+        const next = curr.map(a => Math.random() < 0.15 ? { ...a, status: STATUSES[randInt(0, 2)] } : a);
+        if (Math.random() < 0.4) {
+          const inj = generateAlerts(1)[0]; inj.id = `INC-${1000 + randInt(100, 999)}`;
+          return [inj, ...next].slice(0, 7);
+        }
+        return next;
+      });
+      setTicketTrend(trend => trend.map((d, i) => i === trend.length - 1
+        ? { ...d, raised: clamp(d.raised + randInt(-2,3), 1, 50), resolved: clamp(d.resolved + randInt(-2,3), 1, 50) }
+        : d));
+      setBackups(generateBackups());
+      setSla(s => ({ previous: s.previous, current: clamp(s.current + rand(-0.3, 0.3), 88, 99.8) }));
+    }, 9000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Header lastUpdated={lastUpdated} />
+          <main className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+            <SystemHealth data={health} />
+            <SLACompliance current={sla.current} previous={sla.previous} />
+            <TopDevices devices={topDevices} />
+            <div className="md:col-span-2 xl:col-span-2"><NetworkThroughput data={throughput} /></div>
+            <TicketTrend data={ticketTrend} />
+            <div className="md:col-span-2 xl:col-span-2"><ActiveAlerts alerts={alerts} /></div>
+            <BackupStatus jobs={backups} />
+          </main>
+          <footer className="px-6 py-4 border-t border-slate-800 text-xs text-slate-500 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wifi size={12} style={{ color: MSP_CONFIG.brandColour }} />
+              Powered by <span className="text-slate-300">{MSP_CONFIG.mspName}</span> · Managed Services
+            </div>
+            <div>© {new Date().getFullYear()} {MSP_CONFIG.mspName}. All rights reserved.</div>
+          </footer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Dashboard />);
+</script>
+</body>
+</html>
