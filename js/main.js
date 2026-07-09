@@ -127,6 +127,32 @@
     }, 2600);
   }
 
+  /* ---------- Card spotlight + dashboard tilt (pointer devices only) ---------- */
+  const hasHover = window.matchMedia("(hover: hover)").matches;
+  if (hasHover && !prefersReduced) {
+    document.querySelectorAll(".bento-card, .price-card, .step").forEach((card) => {
+      card.addEventListener("pointermove", (e) => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty("--mx", e.clientX - r.left + "px");
+        card.style.setProperty("--my", e.clientY - r.top + "px");
+      });
+    });
+
+    const dash = document.querySelector(".dashboard");
+    if (dash) {
+      dash.addEventListener("pointermove", (e) => {
+        const r = dash.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width - 0.5;
+        const y = (e.clientY - r.top) / r.height - 0.5;
+        dash.style.transform =
+          "perspective(900px) rotateX(" + (-y * 7).toFixed(2) + "deg) rotateY(" + (x * 9).toFixed(2) + "deg)";
+      });
+      dash.addEventListener("pointerleave", () => {
+        dash.style.transform = "";
+      });
+    }
+  }
+
   /* ---------- CTA form (demo) ---------- */
   const form = document.getElementById("ctaForm");
   form.addEventListener("submit", (e) => {

@@ -1,6 +1,6 @@
-# Meridian — Managed IT, Perfected.
+# LMD Tech — Managed IT, Perfected.
 
-A premium, Apple-inspired marketing website for a managed services provider (MSP).
+A premium, Apple-inspired marketing website for LMD Tech, a managed services provider (MSP).
 Pure HTML/CSS/JS — no frameworks, no build step, no dependencies.
 
 ## Run it
@@ -16,10 +16,10 @@ python3 -m http.server 8000
 
 | Section | Highlights |
 |---|---|
-| Hero | Cinematic dark hero, animated gradient glows, live "NOC monitor" terminal with typewriter effect |
+| Hero | Keynote-style staggered headline rise, animated gradient glows, live "NOC monitor" terminal with typewriter effect |
 | Stats | Scroll-triggered animated counters (uptime, response time, savings) |
-| Services | Apple-style bento grid with hover lift, radar rings, and animated chart bars |
-| Platform | Mock live dashboard with an SVG line chart that draws itself on scroll |
+| Services | Apple-style bento grid with mouse-tracked spotlight, hover lift, radar rings, and animated chart bars |
+| Platform | Mock live dashboard with 3D pointer tilt and an SVG line chart that draws itself on scroll |
 | Security | Live-incrementing "attacks blocked" counter, compliance badges |
 | Pricing | Three-tier flat-rate cards with a featured dark plan |
 | FAQ | Native `<details>` accordion with animated +/− icons |

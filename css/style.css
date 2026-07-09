@@ -54,6 +54,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; transition: none; }
+  .hero-title .w { opacity: 1; transform: none; }
   html { scroll-behavior: auto; }
   * { animation: none !important; }
 }
@@ -279,6 +280,27 @@ body {
   line-height: 1.0;
   margin-bottom: 26px;
 }
+.hero-title .w {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.55em);
+  animation: word-rise 0.9s var(--ease) forwards;
+  animation-delay: calc(0.15s + var(--i) * 0.1s);
+}
+.hero-title .w.gradient-text {
+  background-size: 220% 100%;
+  animation:
+    word-rise 0.9s var(--ease) forwards,
+    sheen 7s ease-in-out 1.4s infinite alternate;
+  animation-delay: calc(0.15s + var(--i) * 0.1s), 1.4s;
+}
+@keyframes word-rise {
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheen {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
 .hero-sub {
   font-size: clamp(18px, 2.2vw, 23px);
   color: rgba(245, 245, 247, 0.72);
@@ -465,6 +487,36 @@ body {
   transform: translateY(-6px);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.10);
 }
+/* Mouse-tracked spotlight (positioned by JS via --mx/--my) */
+.bento-card::after,
+.price-card::after,
+.step::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(10, 132, 255, 0.10),
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
+}
+.bento-dark::after,
+.price-card.featured::after {
+  background: radial-gradient(
+    300px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(100, 210, 255, 0.14),
+    transparent 65%
+  );
+}
+.bento-card:hover::after,
+.price-card:hover::after,
+.step:hover::after {
+  opacity: 1;
+}
 .bento-wide { grid-column: span 3; min-height: 300px; }
 .bento-wide p { max-width: 62%; }
 .bento-dark {
@@ -587,7 +639,10 @@ body {
   padding: 26px;
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
   transition-delay: 0.15s;
+  will-change: transform;
 }
+/* Once revealed, hand the transform over to the JS tilt */
+.dashboard.in { transition: transform 0.25s ease-out; }
 .dash-header {
   display: flex;
   justify-content: space-between;
@@ -709,6 +764,8 @@ body {
   border: 1px solid var(--line-light);
   border-radius: var(--radius);
   padding: 38px 32px;
+  position: relative;
+  overflow: hidden;
   transition: transform 0.5s var(--ease), box-shadow 0.5s var(--ease);
 }
 .step:hover {
